@@ -241,64 +241,71 @@ PlayerTab:CreateToggle({
 	end,
 })
 
--- ---------- Inf Jump ----------
+-- ฟังชันก์ตรวจจับการกดกระโดด
 UserInputService.JumpRequest:Connect(function()
-	if not InfJumpEnabled then return end
+    if not InfJumpEnabled then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
 
-	local character = LocalPlayer.Character
-	if not character then return end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-
-	if InfJumpCurrentMode == "Jump Once" then
-		if canJump then
-			canJump = false
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-		end
-	elseif InfJumpCurrentMode == "Hold Jump" then
-		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	end
+    if InfJumpCurrentMode == "Jump Once" then
+        -- โหมด Jump Once: อนุญาตให้กระโดดกลางอากาศได้แค่ 1 ครั้งต่อการลอยตัว 1 รอบ (จนกว่าจะแตะพื้นใหม่)
+        local state = humanoid:GetState()
+        if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
+            if not hasJumpedInAir then
+                hasJumpedInAir = true
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    elseif InfJumpCurrentMode == "Hold Jump" then
+        -- โหมด Hold Jump: กระโดดรัวๆ ได้ต่อเนื่อง
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
 end)
 
+-- รีเซ็ตสถานะการกระโดดกลางอากาศเมื่อตัวละครแตะพื้น
 local function SetupCharacter(character)
-	local humanoid = character:WaitForChild("Humanoid")
-	canJump = true
-	humanoid.StateChanged:Connect(function(_, newState)
-		if newState == Enum.HumanoidStateType.Landed
-			or newState == Enum.HumanoidStateType.Running
-			or newState == Enum.HumanoidStateType.RunningNoPhysics then
-			canJump = true
-		end
-	end)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Landed then
+            hasJumpedInAir = false
+        end
+    end)
 end
 
 if LocalPlayer.Character then
-	SetupCharacter(LocalPlayer.Character)
+    SetupCharacter(LocalPlayer.Character)
 end
 LocalPlayer.CharacterAdded:Connect(SetupCharacter)
 
+-- UI Toggle สำหรับเปิด-ปิด Infinite Jump
 PlayerTab:CreateToggle({
-	Name = "Inf Jump",
-	CurrentValue = false,
-	Flag = "InfJumpToggle",
-	Callback = function(Value)
-		InfJumpEnabled = Value
-	end,
+    Name = "Inf Jump",
+    CurrentValue = false,
+    Flag = "InfJumpToggle",
+    Callback = function(Value)
+        InfJumpEnabled = Value
+    end,
 })
 
+-- UI Dropdown สำหรับเลือกโหมดการกระโดด
 PlayerTab:CreateDropdown({
-	Name = "Select Mode Inf Jump",
-	Options = InfJumpModeOptions,
-	CurrentOption = InfJumpCurrentMode,
-	MultipleOptions = false,
-	Flag = "InfJumpMode",
-	Callback = function(Mode)
-		if type(Mode) == "table" then
-			InfJumpCurrentMode = Mode[1] or "Jump Once"
-		else
-			InfJumpCurrentMode = Mode
-		end
-	end,
+    Name = "Select Mode Inf Jump",
+    Options = InfJumpModeOptions,
+    CurrentOption = InfJumpCurrentMode,
+    MultipleOptions = false,
+    Flag = "InfJumpMode",
+    Callback = function(Mode)
+        if type(Mode) == "table" then
+            InfJumpCurrentMode = Mode[1] or "Jump Once"
+        else
+            InfJumpCurrentMode = Mode
+        end
+        -- รีเซ็ตสถานะเมื่อเปลี่ยนโหมด
+        hasJumpedInAir = false
+    end,
 })
 
 -- ---------- Fly ----------
