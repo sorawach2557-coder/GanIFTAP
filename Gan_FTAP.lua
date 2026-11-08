@@ -251,34 +251,13 @@ UserInputService.JumpRequest:Connect(function()
     if not humanoid then return end
 
     if InfJumpCurrentMode == "Jump Once" then
-        -- โหมด Jump Once: อนุญาตให้กระโดดกลางอากาศได้แค่ 1 ครั้งต่อการลอยตัว 1 รอบ (จนกว่าจะแตะพื้นใหม่)
-        local state = humanoid:GetState()
-        if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
-            if not hasJumpedInAir then
-                hasJumpedInAir = true
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end
+        -- โหมด Jump Once: กด 1 ครั้ง = เด้งกลางอากาศ 1 ครั้ง (กดย้ำๆ เพื่อลอยตัวทีละครั้งได้)
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     elseif InfJumpCurrentMode == "Hold Jump" then
-        -- โหมด Hold Jump: กระโดดรัวๆ ได้ต่อเนื่อง
+        -- โหมด Hold Jump: กระโดดต่อเนื่องอัตโนมัติเมื่อกดค้าง
         humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
-
--- รีเซ็ตสถานะการกระโดดกลางอากาศเมื่อตัวละครแตะพื้น
-local function SetupCharacter(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    humanoid.StateChanged:Connect(function(_, newState)
-        if newState == Enum.HumanoidStateType.Landed then
-            hasJumpedInAir = false
-        end
-    end)
-end
-
-if LocalPlayer.Character then
-    SetupCharacter(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(SetupCharacter)
 
 -- UI Toggle สำหรับเปิด-ปิด Infinite Jump
 PlayerTab:CreateToggle({
@@ -290,7 +269,7 @@ PlayerTab:CreateToggle({
     end,
 })
 
--- UI Dropdown สำหรับเลือกโหมดการกระโดด
+-- UI Dropdown สำหรับเลือกโหมดการกระโดด (รองรับทุกโครงสร้างข้อมูลจาก UI Library)
 PlayerTab:CreateDropdown({
     Name = "Select Mode Inf Jump",
     Options = InfJumpModeOptions,
@@ -299,15 +278,13 @@ PlayerTab:CreateDropdown({
     Flag = "InfJumpMode",
     Callback = function(Mode)
         if type(Mode) == "table" then
-            InfJumpCurrentMode = Mode[1] or "Jump Once"
+            -- ดึงค่าแรกสุดหรือค่าที่เลือกจริงออกมาจาก Table
+            InfJumpCurrentMode = Mode.Value or Mode[1] or "Jump Once"
         else
-            InfJumpCurrentMode = Mode
+            InfJumpCurrentMode = tostring(Mode)
         end
-        -- รีเซ็ตสถานะเมื่อเปลี่ยนโหมด
-        hasJumpedInAir = false
     end,
 })
-
 -- ---------- Fly ----------
 local function UpdateFlyState(enabled)
 	local character = LocalPlayer.Character
