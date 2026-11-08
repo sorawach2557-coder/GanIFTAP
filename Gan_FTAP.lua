@@ -241,25 +241,38 @@ PlayerTab:CreateToggle({
 	end,
 })
 
--- ฟังชันก์ตรวจจับการกดกระโดด
+-- 1. โหมด Jump Once: ทำงานเฉพาะตอนกดย้ำปุ่มกระโดด (JumpRequest) 1 ครั้ง = 1 เด้ง
 UserInputService.JumpRequest:Connect(function()
     if not InfJumpEnabled then return end
+    if InfJumpCurrentMode ~= "Jump Once" then return end
     
     local character = LocalPlayer.Character
-    if not character then return end
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    if InfJumpCurrentMode == "Jump Once" then
-        -- โหมด Jump Once: กด 1 ครั้ง = เด้งกลางอากาศ 1 ครั้ง (กดย้ำๆ เพื่อลอยตัวทีละครั้งได้)
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-    elseif InfJumpCurrentMode == "Hold Jump" then
-        -- โหมด Hold Jump: กระโดดต่อเนื่องอัตโนมัติเมื่อกดค้าง
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
     end
 end)
 
--- UI Toggle สำหรับเปิด-ปิด Infinite Jump
+-- 2. โหมด Hold Jump: เช็คว่าถ้าปุ่ม Spacebar/Jump ค้างไว้อยู่ ให้กระโดดรัวๆ ทุกเฟรม physics
+RunService.RenderStepped:Connect(function()
+    if not InfJumpEnabled then return end
+    if InfJumpCurrentMode ~= "Hold Jump" then return end
+    
+    -- เช็คว่าผู้เล่นกำลังกดปุ่ม Spacebar ค้างไว้หรือไม่
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end
+end)
+
+-- UI Toggle
 PlayerTab:CreateToggle({
     Name = "Inf Jump",
     CurrentValue = false,
@@ -269,7 +282,7 @@ PlayerTab:CreateToggle({
     end,
 })
 
--- UI Dropdown สำหรับเลือกโหมดการกระโดด (รองรับทุกโครงสร้างข้อมูลจาก UI Library)
+-- UI Dropdown
 PlayerTab:CreateDropdown({
     Name = "Select Mode Inf Jump",
     Options = InfJumpModeOptions,
@@ -278,7 +291,6 @@ PlayerTab:CreateDropdown({
     Flag = "InfJumpMode",
     Callback = function(Mode)
         if type(Mode) == "table" then
-            -- ดึงค่าแรกสุดหรือค่าที่เลือกจริงออกมาจาก Table
             InfJumpCurrentMode = Mode.Value or Mode[1] or "Jump Once"
         else
             InfJumpCurrentMode = tostring(Mode)
