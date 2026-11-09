@@ -242,18 +242,13 @@ PlayerTab:CreateToggle({
 })
 
 -- ============================================
--- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = เด้ง 1 ครั้งกลางอากาศ)
+-- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = เด้ง 1 ครั้ง กลางอากาศได้เรื่อยๆ)
 -- ============================================
-SpaceHeld = false
-
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode ~= Enum.KeyCode.Space then return end
     if not InfJumpEnabled then return end
     if InfJumpCurrentMode ~= "Jump Once" then return end
-    if SpaceHeld then return end   -- กันกดค้าง (ต้องปล่อยก่อนกดใหม่)
-
-    SpaceHeld = true
 
     local character = LocalPlayer.Character
     if not character then return end
@@ -261,12 +256,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not humanoid then return end
 
     humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Space then
-        SpaceHeld = false
-    end
 end)
 
 -- 2. โหมด Hold Jump: เช็คว่าถ้าปุ่ม Spacebar/Jump ค้างไว้อยู่ ให้กระโดดรัวๆ ทุกเฟรม physics
