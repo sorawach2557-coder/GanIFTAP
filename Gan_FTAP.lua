@@ -241,17 +241,31 @@ PlayerTab:CreateToggle({
 	end,
 })
 
--- 1. โหมด Jump Once: ทำงานเฉพาะตอนกดย้ำปุ่มกระโดด (JumpRequest) 1 ครั้ง = 1 เด้ง
-UserInputService.JumpRequest:Connect(function()
+-- ============================================
+-- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = เด้ง 1 ครั้งกลางอากาศ)
+-- ============================================
+SpaceHeld = false
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode ~= Enum.KeyCode.Space then return end
     if not InfJumpEnabled then return end
     if InfJumpCurrentMode ~= "Jump Once" then return end
-    
+    if SpaceHeld then return end   -- กันกดค้าง (ต้องปล่อยก่อนกดใหม่)
+
+    SpaceHeld = true
+
     local character = LocalPlayer.Character
-    if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space then
+        SpaceHeld = false
     end
 end)
 
