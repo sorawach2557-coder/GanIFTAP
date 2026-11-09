@@ -56,10 +56,9 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
 
--- ============================================
--- STATE (ประกาศครั้งเดียว, มี local ทั้งหมด)
--- ============================================
-local _isReady = false          -- guard: กัน callback ยิงตอน Rayfield โหลด config
+--- ตัวแปร
+
+local _isReady = false
 
 -- TPWalk
 local TPWalk_Enabled = false
@@ -82,6 +81,31 @@ local FlySpeed   = 16
 local bodyGyro, bodyVelocity
 local flyConnection = nil
 
+-- Walk Water
+local WaterWalkEnabled = false
+local WaterWalkConn    = nil
+local OceanModel       = nil
+local WaterWalkPlat    = nil
+
+-- Gravity
+local GravityEnabled = false
+local GravityValue   = 196.2
+local GravityDefault = 196.2
+
+-- FOV Camera
+local FovCameraEnabled = false
+local FovCameraValue   = 70
+local FovCameraDefault = 70
+local FovCameraConn    = nil
+
+--- T h r i d  p e r s o n
+
+local ThirdPersonEnabled     = false
+local ThirdPersonMaxZoom     = 99999
+local ThirdPersonDefaultMax  = 0.5                            -- default ของ first person
+local ThirdPersonDefaultMode = Enum.CameraMode.LockFirstPerson -- first person
+local ThirdPersonConn        = nil
+
 -- ============================================
 -- TPWALK
 -- ============================================
@@ -100,11 +124,28 @@ local function UpdateTPWalk()
 		if not hrp or not hum then return end
 		if hum.MoveDirection.Magnitude <= 0 then return end
 
-		-- คงสูตรเดิมไว้ (normalize เป็น 60fps)
 		local step = TPWalk_Studs * (dt * 60)
 		hrp.CFrame = hrp.CFrame + hum.MoveDirection * step
 	end)
 end
+
+-- ============================================
+-- GRAVITY
+-- ============================================
+local function applyGravity()
+	if GravityEnabled then
+		Workspace.Gravity = GravityValue
+	else
+		Workspace.Gravity = GravityDefault
+	end
+end
+
+-- อ่าน gravity ของเกมจริงหลังโหลดเสร็จ (กันบางเกมตั้งไม่ใช่ 196.2)
+task.defer(function()
+	task.wait(0.2)
+	GravityDefault = Workspace.Gravity
+	GravityValue   = GravityDefault
+end)
 
 -- ============================================
 -- RAYFIELD
@@ -222,7 +263,6 @@ PlayerTab:CreateToggle({
 		NoclipEnabled = Value
 
 		if NoclipEnabled then
-			-- กัน connection ซ้ำ
 			if NoclipConnection then
 				NoclipConnection:Disconnect()
 				NoclipConnection = nil
@@ -242,41 +282,26 @@ PlayerTab:CreateToggle({
 })
 
 -- ============================================
--- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = ลอยขึ้นไปเรื่อยๆ ไม่หยุด)
+-- INF JUMP
 -- ============================================
-InfJumpActive = false   -- toggle: กด Space 1 ครั้ง = เปิด/ปิดการลอยขึ้น
-
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode ~= Enum.KeyCode.Space then return end
     if not InfJumpEnabled then return end
     if InfJumpCurrentMode ~= "Jump Once" then return end
 
-    -- กด 1 ครั้ง → สลับสถานะ เปิด/ปิด
-    InfJumpActive = not InfJumpActive
-end)
-
--- ลูปดันตัวขึ้นเรื่อยๆ (ไม่ต้องกดอะไรอีก)
-RunService.Heartbeat:Connect(function(dt)
-    if not InfJumpEnabled then return end
-    if InfJumpCurrentMode ~= "Jump Once" then return end
-    if not InfJumpActive then return end
-
     local character = LocalPlayer.Character
     if not character then return end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
 
-    -- ดัน HumanoidRootPart ขึ้นทุกเฟรม (ความเร็วคงที่)
-    hrp.CFrame = hrp.CFrame + Vector3.new(0, 2 * (dt * 60), 0)
+    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 end)
 
--- 2. โหมด Hold Jump: เช็คว่าถ้าปุ่ม Spacebar/Jump ค้างไว้อยู่ ให้กระโดดรัวๆ ทุกเฟรม physics
 RunService.RenderStepped:Connect(function()
     if not InfJumpEnabled then return end
     if InfJumpCurrentMode ~= "Hold Jump" then return end
-    
-    -- เช็คว่าผู้เล่นกำลังกดปุ่ม Spacebar ค้างไว้หรือไม่
+
     if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
         local character = LocalPlayer.Character
         if character then
@@ -288,7 +313,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- UI Toggle
 PlayerTab:CreateToggle({
     Name = "Inf Jump",
     CurrentValue = false,
@@ -298,7 +322,6 @@ PlayerTab:CreateToggle({
     end,
 })
 
--- UI Dropdown
 PlayerTab:CreateDropdown({
     Name = "Select Mode Inf Jump",
     Options = InfJumpModeOptions,
@@ -311,8 +334,16 @@ PlayerTab:CreateDropdown({
         else
             InfJumpCurrentMode = tostring(Mode)
         end
+
+        Rayfield:Notify({
+            Title = "Gan I Player Infjump",
+            Content = "Select " .. InfJumpCurrentMode,
+            Duration = 6.5,
+            Image = "mouse-pointer-2-off",
+        })
     end,
 })
+
 -- ---------- Fly ----------
 local function UpdateFlyState(enabled)
 	local character = LocalPlayer.Character
@@ -361,7 +392,6 @@ local function UpdateFlyState(enabled)
 
 			bodyGyro.CFrame = camCF
 
-			-- *** แก้บั๊ก NaN: ต้องเช็ค magnitude ก่อนใช้ .Unit ***
 			if moveDir.Magnitude > 0 then
 				bodyVelocity.Velocity = moveDir.Unit * FlySpeed
 			else
@@ -422,3 +452,263 @@ task.defer(function()
 	TPWalk_Enabled = false
 	TPWalk_Studs = 1.0
 end)
+
+PlayerTab:CreateSection("Advanced Movement")
+
+-- ============================================
+-- WALK WATER
+-- ============================================
+local function refreshOceanRef()
+	local map = Workspace:FindFirstChild("Map")
+	if not map then return nil end
+	local always = map:FindFirstChild("AlwaysHereTweenedObjects")
+	if not always then return nil end
+	return always:FindFirstChild("Ocean")
+end
+
+-- หา Y ผิวน้ำของ Ocean ใต้ตำแหน่ง HRP
+local function getOceanSurfaceY(hrp)
+	OceanModel = refreshOceanRef()
+	if not OceanModel then return nil end
+
+	if OceanModel:IsA("BasePart") then
+		local rel = OceanModel.CFrame:PointToObjectSpace(hrp.Position)
+		if math.abs(rel.X) <= OceanModel.Size.X * 0.5 + 6
+		and math.abs(rel.Z) <= OceanModel.Size.Z * 0.5 + 6 then
+			return OceanModel.Position.Y + OceanModel.Size.Y * 0.5
+		end
+		return nil
+	end
+
+	local bestY = nil
+	for _, v in ipairs(OceanModel:GetDescendants()) do
+		if v:IsA("BasePart") then
+			local rel = v.CFrame:PointToObjectSpace(hrp.Position)
+			if math.abs(rel.X) <= v.Size.X * 0.5 + 6
+			and math.abs(rel.Z) <= v.Size.Z * 0.5 + 6 then
+				local topY = v.Position.Y + v.Size.Y * 0.5
+				if hrp.Position.Y >= topY - 10 then
+					if not bestY or topY > bestY then
+						bestY = topY
+					end
+				end
+			end
+		end
+	end
+	return bestY
+end
+
+local function destroyWaterPlatform()
+	if WaterWalkPlat then
+		WaterWalkPlat:Destroy()
+		WaterWalkPlat = nil
+	end
+end
+
+local function createWaterPlatform()
+	if WaterWalkPlat and WaterWalkPlat.Parent then return WaterWalkPlat end
+	local part = Instance.new("Part")
+	part.Name = "WaterWalkPlatform"
+	part.Size = Vector3.new(10, 2, 10)
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Transparency = 1
+	part.Material = Enum.Material.SmoothPlastic
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = Workspace
+	WaterWalkPlat = part
+	return part
+end
+
+local function stopWaterWalk()
+	if WaterWalkConn then
+		WaterWalkConn:Disconnect()
+		WaterWalkConn = nil
+	end
+	destroyWaterPlatform()
+end
+
+local function startWaterWalk()
+	stopWaterWalk()
+
+	WaterWalkConn = RunService.Stepped:Connect(function()
+		if not WaterWalkEnabled then return end
+
+		local char = LocalPlayer.Character
+		if not char then return end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if not hrp or not humanoid then return end
+
+		local surfaceY = getOceanSurfaceY(hrp)
+		if not surfaceY then
+			destroyWaterPlatform()
+			return
+		end
+
+		local platform = createWaterPlatform()
+		local targetY = surfaceY - 1
+
+		local curY = platform.Position.Y
+		local smoothY = curY + (targetY - curY) * 0.5
+
+		platform.CFrame = CFrame.new(hrp.Position.X, smoothY, hrp.Position.Z)
+
+		if hrp.Position.Y < surfaceY + 2 then
+			hrp.CFrame = CFrame.new(hrp.Position.X, surfaceY + 3, hrp.Position.Z)
+				* (hrp.CFrame - hrp.Position)
+			hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+		end
+
+		if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
+			humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		end
+	end)
+end
+
+-- Toggle Walk Water
+PlayerTab:CreateToggle({
+	Name = "Walk Water",
+	CurrentValue = false,
+	Flag = "WalkWaterToggle",
+	Callback = function(Value)
+		WaterWalkEnabled = Value
+		if Value then
+			startWaterWalk()
+		else
+			stopWaterWalk()
+		end
+	end,
+})
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+	destroyWaterPlatform()
+	if not WaterWalkEnabled then return end
+	character:WaitForChild("HumanoidRootPart", 5)
+	task.wait(0.1)
+	if WaterWalkEnabled then
+		startWaterWalk()
+	end
+end)
+
+-- ============================================
+-- GRAVITY UI
+-- ============================================
+PlayerTab:CreateToggle({
+	Name = "Gravity",
+	CurrentValue = false,
+	Flag = "GravityToggle",
+	Callback = function(Value)
+		GravityEnabled = Value
+		applyGravity()
+
+		Rayfield:Notify({
+			Title = "Gan I Gravity",
+			Content = Value and ("Enabled (" .. GravityValue .. ")") or "Disabled",
+			Duration = 5,
+			Image = "move-vertical",
+		})
+	end,
+})
+
+PlayerTab:CreateSlider({
+	Name = "Gravity Custom",
+	Range = {0, 1000},
+	Increment = 10,
+	Suffix = "Force",
+	CurrentValue = 196.2,
+	Flag = "GravityCustomSlider",
+	Callback = function(Value)
+		GravityValue = Value
+		if GravityEnabled then
+			Workspace.Gravity = GravityValue
+		end
+	end,
+})
+
+PlayerTab:CreateSection("Camera")
+
+PlayerTab:CreateToggle({
+	Name = "Fov Camera",
+	CurrentValue = false,
+	Flag = "FovCameraToggle",
+	Callback = function(Value)
+		FovCameraEnabled = Value
+		if Value then
+			startFovLock()
+			applyFov()
+		else
+			stopFovLock()
+			applyFov()
+		end
+	end,
+})
+
+PlayerTab:CreateSlider({
+	Name = "Fov Camera Custom",
+	Range = {50, 120},
+	Increment = 1,
+	Suffix = "FOV",
+	CurrentValue = 70,
+	Flag = "FovCameraSlider",
+	Callback = function(Value)
+		FovCameraValue = Value
+		if FovCameraEnabled then
+			Camera.FieldOfView = Value
+		end
+	end,
+})
+
+local function applyThirdPerson()
+	pcall(function()
+		if ThirdPersonEnabled then
+			LocalPlayer.CameraMaxZoomDistance = ThirdPersonMaxZoom
+			LocalPlayer.CameraMode = Enum.CameraMode.Classic
+		else
+			-- คืนค่าเป็น first person
+			LocalPlayer.CameraMaxZoomDistance = ThirdPersonDefaultMax
+			LocalPlayer.CameraMode = ThirdPersonDefaultMode
+		end
+	end)
+end
+
+local function startThirdPersonLock()
+	if ThirdPersonConn then return end
+	ThirdPersonConn = RunService.RenderStepped:Connect(function()
+		if not ThirdPersonEnabled then return end
+		pcall(function()
+			if LocalPlayer.CameraMaxZoomDistance ~= ThirdPersonMaxZoom then
+				LocalPlayer.CameraMaxZoomDistance = ThirdPersonMaxZoom
+			end
+			if LocalPlayer.CameraMode ~= Enum.CameraMode.Classic then
+				LocalPlayer.CameraMode = Enum.CameraMode.Classic
+			end
+		end)
+	end)
+end
+
+local function stopThirdPersonLock()
+	if ThirdPersonConn then
+		ThirdPersonConn:Disconnect()
+		ThirdPersonConn = nil
+	end
+end
+
+PlayerTab:CreateToggle({
+	Name = "Third Person",
+	CurrentValue = false,
+	Flag = "ThirdPersonToggle",
+	Callback = function(Value)
+		ThirdPersonEnabled = Value
+		if Value then
+			applyThirdPerson()
+			startThirdPersonLock()
+		else
+			stopThirdPersonLock()
+			applyThirdPerson()
+		end
+	end,
+})
