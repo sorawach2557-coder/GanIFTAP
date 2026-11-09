@@ -242,20 +242,48 @@ PlayerTab:CreateToggle({
 })
 
 -- ============================================
--- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = เด้ง 1 ครั้ง กลางอากาศได้เรื่อยๆ)
+-- INF JUMP - Jump Once (กด Spacebar 1 ครั้ง = เด้งกลางอากาศต่อเนื่องตลอดไป)
 -- ============================================
+InfJumpActive = false   -- สถานะ: กำลังเด้งอยู่หรือไม่ (เปิดด้วยการกด Space 1 ครั้ง)
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode ~= Enum.KeyCode.Space then return end
     if not InfJumpEnabled then return end
     if InfJumpCurrentMode ~= "Jump Once" then return end
 
+    -- กด 1 ครั้ง → สลับสถานะเปิด/ปิด
+    InfJumpActive = not InfJumpActive
+
+    -- ถ้าเพิ่งเปิด → เด้งทันที 1 ครั้ง
+    if InfJumpActive then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end
+end)
+
+-- ลูปเด้งต่อเนื่องกลางอากาศตลอดเวลา (ไม่ต้องกดอะไรอีก)
+RunService.RenderStepped:Connect(function()
+    if not InfJumpEnabled then return end
+    if InfJumpCurrentMode ~= "Jump Once" then return end
+    if not InfJumpActive then return end
+
     local character = LocalPlayer.Character
     if not character then return end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
 
-    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    -- เด้งเฉพาะตอนอยู่กลางอากาศ (ไม่แตะพื้น)
+    local state = humanoid:GetState()
+    if state == Enum.HumanoidStateType.Freefall 
+        or state == Enum.HumanoidStateType.Jumping then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
 end)
 
 -- 2. โหมด Hold Jump: เช็คว่าถ้าปุ่ม Spacebar/Jump ค้างไว้อยู่ ให้กระโดดรัวๆ ทุกเฟรม physics
